@@ -792,6 +792,259 @@ SELECT * FROM example_table WHERE x > 1 AND y > 1 OR z = 1;
 
 ### 响应式编程与函数式编程
 
+`响应式(reactive)编程` 的概念在日常开发中不太常见，这种编程范式在我们日常工作中可谓是无处不在，但我们很少意识到他。考虑如下场景: 
+
+```typescript
+let f = a + b;
+```
+
+上述代码意为 `a` 与 `b` 通过 `+` 运算赋值给 `f`，这个操作是一次性的。但如果我们定义这串语句本中 `f` 会随 `a`、`b` 的变化自动更新，你可以理解为：
+
+```typescript
+let f = Observe(a) + Observe(b);
+```
+
+在 `React 16+` 中的形式如下:
+
+```jsx
+function Index() {
+  const [a, setA] = useState();
+  const [b, setB] = useState();
+
+  const f = a + b;
+
+  // 修改 a 与 b ...
+
+  return f 
+}
+```
+
+在 `Vue 3` 中的形式如下:
+
+```typescript
+const a = ref('');
+const b = ref('');
+
+// 修改 a 与 b ...
+
+const f = computed(() => a.value + b.value);
+```
+
+我们可以很明显的发现，前端目前主流框架所使用的的状态模式几乎都使用了响应式编程，但是这和 `函数式(functional)编程`有何关系呢？我们到目前为止都还没提到它，别急，我们再回顾一下：
+
+```typescript
+let f = Observe(a) + Observe(b);
+
+let f = 3 + Observe(b); // 影响 f 变化的只有 b
+let f = 3 + 1; // 没有什么东西影响 f 变化
+let 5 = 3 + Observe(b); // b 是变化值，但该表达式非法
+```
+
+通过变形我们的语句，你可能会发现，整个表达式不再是单纯的赋值语句，你可能会发现这更像数学语言和描述，你或许能回想起这个术语应该叫`等式(equation)` 或 `恒等式(identities)`，
+
+```bash
+x+1=3 # 含有未知数的等式
+2+1=3 # 不含未知数的等式
+```
+
+我们再以 Vue 为例来表达上述等式:
+
+```ts
+// 等价 f(x) = 1 + x
+const equation = computed(() => 1 + x.value); 
+
+// 等价 3 = 2 + 1
+const equation = computed(() => 1 + 2); 
+```
+
+**等式(equation)** 的概念：含有等号的式子。如 `x = 1`、`3 = 1 + 2`、`y = x^2`，即使不包含任何 **未知数(unknown number)**，只要包含 `=` 的式子即为等式。
+
+在中文环境中，我们把将含有**待求解未知数**的**等式**叫做**方程(equation)**。比如 `x = 1`，并不称之为 **方程**，而是等式，这在计算机中，我们称之为 `赋值`，形如 `let f = a + b`的表达式，其本质也与 `x = 1`无异，因为他们都不包含 `未知数(unknown number)`，所以都是等式。实际上，数学中的 **方程** 在计算机中，广义而言就是指 `算法`。
+
+至此我们基本理解了命令式编程和函数编程思想在前端日常开发中的渗透，当我们有基本的认识之后，我们也终于进入本小节的重点。
+
+**为什么需要响应式？**
+
+**响应式编程的出发点就是为了简化交互式用户界面的创建和实时系统动画绘制而提出来的一种方法论**。回想一下，如果没有响应式的框架与库，我们将如何操作页面与交互
+
+```typescript
+const $el = document.getElementById('target');
+$el.innerHtml = `...`;
+$el.styles.width = "200px";
+$el.styles.height = "80px";
+$el.style.padding = "32px"
+```
+
+但实际上为了实现上述目标，框架与库对于 `数据状态` 实现，已经脱离了响应式编程的初衷，成为更通用的编程模式。当我们用它解决 `算法` 问题，就会得到：
+
+```ts
+const equation = computed(() => 1 + x.value); 
+```
+
+当我们如此处理复杂的业务逻辑时，我们也感受到了响应式编程带来的难题。
+
+1. 由于响应式编程的传播性，当我们叠加使用响应式状态和数据，数据之间的关系也随之更难把握，数据变化也愈发难以追踪和理解，甚至是 `非响应式(passive)编程` 代码也会受到影响。
+
+案例1: 错误传播
+```jsx
+// global.ts 文件
+function useGlobalState() {
+  // computedState 依赖内部的
+  const computedState = globalStateX + globalStateY;
+  return { computedState, setGlobal };
+}
+
+// a.ts文件
+function A () {
+  const [_. setGlobal] = useGlobalState();
+
+  ...
+
+  // A 中修改了 globalStateX 状态
+  setGlobal(x)
+}
+
+// b.ts文件
+function B () {
+  const [_. setGlobal] = useGlobalState();
+  
+  // B 中修改了 globalStateY 状态
+  setGlobal(y)
+}
+
+// main.ts文件
+function Main () {
+  // 使用者无法得知 computedState 的变化来自于何处
+  const { computedState } = useGlobalState();
+}
+```
+
+上述案例中，`Main` 中的 `computedState` 数据变化时，开发者无从得知是何处产生的，当错误发生时，`Main` 开发者需要了解 `useGlobalState` 的实现，由于错误还可能从任意 (A 或 B) 组件的调用方传递到 `Main`，开发者还需继续深入代码。可想而知，依赖复杂的场景下，上述错误需要耗费很大的精力排查。我们在 [useRequest 循环依赖例子](#代码书写中的循环依赖)中也见到了类似的场景的威力。
+
+难道非响应式实现下，这种情况会变得更好吗:
+
+```ts
+// main.ts文件
+function Main () {
+  const { globalStateX, globalStateY } = useGlobalState();
+  // 由于 global 失去了响应性，Main 维护者需要自己组装数据
+  const computedState = globalStateX + globalStateY;
+}
+```
+
+上述代码中，我们简单地去除了部分响应性， `Main` 作者维护了更多实现细节，获得了一定程度上的控制能力，但是可想而知，代码也变得更加臃肿了。假设我们将 React 的响应式能力完全去除，代码虽然不再包含错误传播，但是每个实现所需关注的细节也变得更多了，最后可能会回到 `jQuery` 时代。
+
+案例2：与非响应性代码互操作
+
+```ts
+// React 组件
+function useReactiveData () {
+  const [state. setState] = useState();
+  return {
+    state,
+    setState
+  }
+  
+}
+
+// 单纯 JS 文件
+const reactiveData = useReactiveData();
+
+// reactiveData 执行将会失败，useReactiveData 无法脱离 React 执行
+
+
+// React 组件
+
+const nativeReactiveObject = Object.defineProperty({}, 'val', {
+  set() {...}
+  get() {...}
+})
+
+function useReactiveData () {
+
+  // 在库中使用 getter、setter、proxy 等被视为反模式
+  
+}
+```
+
+在和视图库互操作的过程中，开发者会发现，很多响应性特性脱离了库就无法保持；而库中使用 JS 原生响应式对象，又被认为是 `反模式(anti-pattern)` 的；不同库之间的状态通信更是难于登天，所谓的**微前端**将各自库状态隔离，通过更大的`桥`进行通信，最为荒诞的是所有库的生态都在 JS 之下。各个库的生态无法兼容已有 JS 生态，需要在各自封闭的生态上扩展，相关库衍生出各自相应的实现。正在流行的 `Headless UI` 为了兼容各个库，干脆将数据层完全抽象，提供相应库的数据层包装 `@headlessui/react`、`@headlessui/vue` 才能实现复用。
+
+**为什么需要函数式？**
+
+了解了前端的响应式编程实践之后，当我们从 `响应式编程` 中推导出数学等式时，我们就不难理解，`函数式编程` 其实是为了实践 `响应式编程` 带来的副产物。
+
+实际上函数式编程的内容远不止严格定义变量和控制副作用两种，在 《整洁架构》一书中，作者将函数式编程的架构意义定义为 `限制和规范了程序中的赋值`，在真正的函数式语言中，不存在任何变量，我们也无法自由执行 `f = a + b` 这样的表达式。
+
+```rust
+// 定义 A 对象
+let x = A {
+    item: String::from("item"),
+};
+
+// y 获取 x
+let y = x;
+
+// 出错：x 值已被移动
+let z = x;
+```
+
+函数式在前端的意义主要体现于限制了原型链的使用，控制了对象传递和引用，让开发者理解复用可以通过组合实现，加深了开发者对数据所有权的意识。它的主要缺点在于理解难度和可读性，好在大部分前端开发者并不真正理解函数式编程，也并不真正需要函数式编程，其实在大部分现代编程语言中，都或多或少借鉴了函数式编程思想，并采纳了部分易于使用的能力而放弃了晦涩难懂的部分，我们通过一个例子来了解：
+
+```typescript
+function add (a, b, c) {
+	return a + b + c;
+}
+
+// 使用 add 函数
+add(1, 2 ,3)
+
+// 对 add 函数进行柯里化
+const curryAdd = curry(add);
+
+// 使用 curryAdd 函数
+curryAdd(1)(2)(3)
+```
+
+上述例子演示了柯里化的能力——将单次调用函数，转换为多次传参才能调用的函数，这是前端社区过去非常推崇的一种炫技方式，如果你能实现出 `curry` 函数本身，那你就是最靓的仔。但是，在我们实际业务中，或者笔者本人的职业生涯中，到目前为止，从来没有遇到过一次需要该方法的场景。而这个方法在其他纯函数语言中是非常重要的，比如 `Haskell`，它的函数参数不能超过2个，所以这个辅助函数是必须的。如果我们在 JS 中生搬硬套，反而让代码更难阅读，或者让库变得更难使用。在即将淘汰的 `webpack` 库中，由于使用了 `compose`(组合代码，类似 `pipe`) 方法用于加载 `loader`，该方法的特殊实现导致 `webpack` 中的 `loader` 加载顺序并不是 `书写时` 的从上到下执行，而是从下到上执行，一度让这个知识点成为评价前端开发能力`“高低”`的重要标准，而掌握这样的知识在大部分业务和库中都是毫无意义的。
+
+总结一下，本小节主要介绍了响应式编程和函数式编程在前端中的由来，以及两者的一些缺陷和陷阱，整个章节并没有深入和全面地讲解两者的优缺点和适合使用的场景，因为本文的重点在于提高初级库开发者对于前端目前所使用的范式的理解，避免在设计和实现库时，陷入这些范式常见的错误之中，如果读者有兴趣可以自行查找相关内容做进一步深入。
+
 ### 函数重载与命名方法
 
-### 状态管理
+由于 JS 本身并不限制如何定义函数和使用函数，TS 作为 JS 的超集，自然而然实现了函数重载的定义：
+
+```ts
+declare function N (paramA: string, paramB: string): void;
+declare function N (paramA: number, paramB: number): void;
+declare function N (paramA: number, paramB: string): void;
+```
+
+上述函数 `N` 的定义都是合法的，使用哪一个函数签名，由 TS 负责推导。
+
+```ts
+function N (paramA: string | number, paramB: string | number) {
+  if (typeof paramA === 'string') ...
+  if (typeof paramB === 'string') ...
+  if (typeof paramA === 'number' and typeof paramB === 'string') ...
+}
+```
+
+不难想象，上述内容就是我们的真正实现，TS 只是满足了我们对于类型的需求。但是当代的新语言如 `go` 和 `rust` 都抛弃了函数重载的用法。`go` 在其官网FAQ 中写道 `“函数重载有时是有用的，但实践中更有可能的是让人困惑，带来代码的脆弱性”`，通过上面的例子不难发现，为了实现功能拓展，我们在代码中使用了大量 `if` 判断，当我们需要继续维护或添加功能时，往往会引入更多问题，使代码变得更加脆弱和难以维护。`rust` 也同样地采用了这个方案，那么为了保证代码的简单性和可维护性，我们又牺牲了什么呢？
+
+```rust
+fn new() -> void {}
+fn new_int() -> void {}
+fn new_str() -> void {}
+fn new_str_slice() -> void {}
+fn new_str_slice_in() -> void {}
+... 
+```
+
+答案是 `命名爆炸`，我们将不得不为每个行为表现命名，但是如果我们使用函数重载，开发者更有可能无法区分究竟调用了什么实现，而如果使用泛型或联合类型又丢失了部分类型推导能力。
+
+对于库开发者而言，仍然建议该场景下尽可能使用 `命名新函数` 的方式来修改行为，以此保证代码的复用性和可维护性。
+
+## 总结
+
+本文从 **请求** 场景出发，依次对比了 `Ahooks` 中的 `useRequest` 方法和 `SolidJS` 中的 `createResource` 各自设计的缺陷，和引申出关于我们实践库设计与开发过程中可能遇到的难题，并揭示了在当代库主导的前端开发模式中，开发人员所内化的编程范式未意识到的编程陷阱，从而指导我们前端技术人员在开发组件、库、框架时，能从更高的角度出发，提供出优雅、易用、受欢迎的技术产物。
+
