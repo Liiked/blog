@@ -12,8 +12,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@algolia/client-search": "^4.14.3",
-    "vitepress": "1.0.0-alpha.33",
-    "vue": "^3.2.45"
+    "@algolia/client-search": "^5.59.0",
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.42"
   }
 }
